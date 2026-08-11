@@ -32,9 +32,9 @@ test("server-renders the Mini CRM login shell", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
-  assert.match(html, /<title>Mini CRM Portfolio<\/title>/i);
+  assert.match(html, /<title>Mini CRM<\/title>/i);
   assert.match(html, /Mini CRM/);
-  assert.match(html, /Project Portfolio #1/);
+  assert.match(html, /Sales Workspace/);
   assert.match(html, /demo@minicrm\.test/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
   assert.doesNotMatch(html, /Your site is taking shape/i);

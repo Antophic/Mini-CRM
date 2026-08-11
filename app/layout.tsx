@@ -3,9 +3,9 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Mini CRM Portfolio",
+  title: "Mini CRM",
   description:
-    "Aplikasi Mini CRM portfolio untuk mengelola client, status lead, notes, dan dashboard jumlah client.",
+    "Aplikasi Mini CRM untuk mengelola client, status lead, notes, dan dashboard jumlah client.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",

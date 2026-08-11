@@ -294,11 +294,23 @@ export function MiniCrmApp() {
   const [noteDraft, setNoteDraft] = useState("");
 
   useEffect(() => {
-    const initialClients = loadClients();
-    setClients(initialClients);
-    setSelectedClientId(initialClients[0]?.id ?? "");
-    setUser(loadSession());
-    setHydrated(true);
+    let cancelled = false;
+
+    queueMicrotask(() => {
+      if (cancelled) {
+        return;
+      }
+
+      const initialClients = loadClients();
+      setClients(initialClients);
+      setSelectedClientId(initialClients[0]?.id ?? "");
+      setUser(loadSession());
+      setHydrated(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -314,9 +326,15 @@ export function MiniCrmApp() {
     const won = clients.filter((client) => client.status === "Menang").length;
     const totalValue = clients.reduce((sum, client) => sum + client.value, 0);
     const notes = clients.reduce((sum, client) => sum + client.notes.length, 0);
+    const activeValue = clients
+      .filter((client) => client.status !== "Kalah")
+      .reduce((sum, client) => sum + client.value, 0);
+    const closeRate = clients.length ? Math.round((won / clients.length) * 100) : 0;
 
     return {
       active,
+      activeValue,
+      closeRate,
       notes,
       total: clients.length,
       totalValue,
@@ -551,65 +569,92 @@ export function MiniCrmApp() {
   if (!user) {
     return (
       <main className="login-page">
-        <section className="login-panel" aria-labelledby="login-title">
-          <div className="brand-row">
-            <span className="brand-mark">M</span>
-            <div>
-              <p className="eyebrow">Project Portfolio #1</p>
-              <h1 id="login-title">Mini CRM</h1>
+        <section className="login-shell" aria-labelledby="login-title">
+          <div className="login-panel">
+            <div className="brand-row">
+              <span className="brand-mark">M</span>
+              <div>
+                <p className="eyebrow">Sales Workspace</p>
+                <h1 id="login-title">Mini CRM</h1>
+              </div>
             </div>
+
+            <form className="login-form" onSubmit={handleLogin}>
+              <label>
+                Email
+                <input
+                  autoComplete="email"
+                  name="email"
+                  onChange={(event) =>
+                    setLoginForm((current) => ({
+                      ...current,
+                      email: event.target.value,
+                    }))
+                  }
+                  type="email"
+                  value={loginForm.email}
+                />
+              </label>
+
+              <label>
+                Password
+                <input
+                  autoComplete="current-password"
+                  name="password"
+                  onChange={(event) =>
+                    setLoginForm((current) => ({
+                      ...current,
+                      password: event.target.value,
+                    }))
+                  }
+                  type="password"
+                  value={loginForm.password}
+                />
+              </label>
+
+              {loginError ? <p className="form-error">{loginError}</p> : null}
+
+              <div className="login-actions">
+                <button className="button primary" type="submit">
+                  Masuk
+                </button>
+                <button
+                  className="button secondary"
+                  onClick={handleDemoLogin}
+                  type="button"
+                >
+                  Akses Presentasi
+                </button>
+              </div>
+
+              <p className="demo-hint">demo@minicrm.test / password</p>
+            </form>
           </div>
 
-          <form className="login-form" onSubmit={handleLogin}>
-            <label>
-              Email
-              <input
-                autoComplete="email"
-                name="email"
-                onChange={(event) =>
-                  setLoginForm((current) => ({
-                    ...current,
-                    email: event.target.value,
-                  }))
-                }
-                type="email"
-                value={loginForm.email}
-              />
-            </label>
-
-            <label>
-              Password
-              <input
-                autoComplete="current-password"
-                name="password"
-                onChange={(event) =>
-                  setLoginForm((current) => ({
-                    ...current,
-                    password: event.target.value,
-                  }))
-                }
-                type="password"
-                value={loginForm.password}
-              />
-            </label>
-
-            {loginError ? <p className="form-error">{loginError}</p> : null}
-
-            <div className="login-actions">
-              <button className="button primary" type="submit">
-                Masuk
-              </button>
-              <button
-                className="button secondary"
-                onClick={handleDemoLogin}
-                type="button"
-              >
-                Masuk Demo
-              </button>
+          <aside className="login-preview" aria-label="Ringkasan pipeline">
+            <div className="preview-heading">
+              <p className="eyebrow">Pipeline Hari Ini</p>
+              <strong>{formatCurrency(25700000)}</strong>
             </div>
-
-            <p className="demo-hint">Demo: demo@minicrm.test / password</p>
-          </form>
+            <div className="preview-bars" aria-hidden="true">
+              <span className="bar bar-new" />
+              <span className="bar bar-contacted" />
+              <span className="bar bar-proposal" />
+              <span className="bar bar-won" />
+            </div>
+            <div className="preview-list">
+              {seedClients.map((client) => (
+                <div className="preview-row" key={client.id}>
+                  <span className="client-avatar">{getInitials(client.name)}</span>
+                  <span>
+                    <strong>{client.company}</strong>
+                    <small>{client.status}</small>
+                  </span>
+                  <b>{formatCurrency(client.value)}</b>
+                </div>
+              ))}
+            </div>
+          </aside>
         </section>
       </main>
     );
@@ -621,13 +666,13 @@ export function MiniCrmApp() {
         <div className="brand-row">
           <span className="brand-mark">M</span>
           <div>
-            <p className="eyebrow">Project Portfolio #1</p>
+            <p className="eyebrow">Sales Workspace</p>
             <h1>Mini CRM</h1>
           </div>
         </div>
 
         <div className="user-actions">
-          <span>{user.email}</span>
+          <span className="user-chip">{user.email}</span>
           <button className="button ghost" onClick={handleLogout} type="button">
             Keluar
           </button>
@@ -635,22 +680,37 @@ export function MiniCrmApp() {
       </header>
 
       <main className="crm-layout">
+        <section className="page-heading">
+          <div>
+            <p className="eyebrow">Pipeline Client</p>
+            <h2>Kelola prospek dan follow-up</h2>
+          </div>
+          <p>
+            {dashboard.active} lead aktif, {dashboard.notes} catatan, closing{" "}
+            {dashboard.closeRate}%.
+          </p>
+        </section>
+
         <section className="summary-strip" aria-label="Dashboard jumlah client">
           <article className="metric metric-total">
             <span>Total Client</span>
             <strong>{dashboard.total}</strong>
+            <small>Semua kontak</small>
           </article>
           <article className="metric metric-active">
             <span>Lead Aktif</span>
             <strong>{dashboard.active}</strong>
+            <small>Perlu follow-up</small>
           </article>
           <article className="metric metric-won">
             <span>Menang</span>
             <strong>{dashboard.won}</strong>
+            <small>{dashboard.closeRate}% close rate</small>
           </article>
           <article className="metric metric-value">
-            <span>Pipeline</span>
-            <strong>{formatCurrency(dashboard.totalValue)}</strong>
+            <span>Pipeline Aktif</span>
+            <strong>{formatCurrency(dashboard.activeValue)}</strong>
+            <small>Total tanpa lost deal</small>
           </article>
         </section>
 
@@ -658,7 +718,7 @@ export function MiniCrmApp() {
           <section className="panel form-panel" aria-labelledby="client-form">
             <div className="panel-heading">
               <div>
-                <p className="eyebrow">Client</p>
+                <p className="eyebrow">Data Client</p>
                 <h2 id="client-form">
                   {editingId ? "Edit Client" : "Tambah Client"}
                 </h2>
@@ -767,7 +827,7 @@ export function MiniCrmApp() {
           <section className="panel list-panel" aria-labelledby="client-list">
             <div className="panel-heading list-heading">
               <div>
-                <p className="eyebrow">Database</p>
+                <p className="eyebrow">Pipeline</p>
                 <h2 id="client-list">Daftar Client</h2>
               </div>
 
@@ -797,6 +857,11 @@ export function MiniCrmApp() {
 
             {filteredClients.length > 0 ? (
               <div className="client-list-rows">
+                <div className="client-table-head" aria-hidden="true">
+                  <span>Client</span>
+                  <span>Status dan nilai</span>
+                  <span>Aksi</span>
+                </div>
                 {filteredClients.map((client) => (
                   <article
                     className={`client-row ${
@@ -826,7 +891,7 @@ export function MiniCrmApp() {
                         {client.status}
                       </span>
                       <span>{formatCurrency(client.value)}</span>
-                      <span>{client.notes.length} notes</span>
+                      <span>{client.notes.length} catatan</span>
                     </div>
 
                     <div className="client-actions">
@@ -877,7 +942,7 @@ export function MiniCrmApp() {
               <>
                 <div className="panel-heading">
                   <div>
-                    <p className="eyebrow">Notes</p>
+                    <p className="eyebrow">Aktivitas</p>
                     <h2 id="notes-title">{selectedClient.name}</h2>
                   </div>
                   <span
