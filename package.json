@@ -11,7 +11,7 @@
   "scripts": {
     "dev": "vite",
     "dev:api": "npm --workspace mini-crm-api run dev",
-    "build": "vite build",
+    "build": "node scripts/generate-prisma-for-vercel.mjs && vite build",
     "build:api": "npm --workspace mini-crm-api run build",
     "build:all": "npm run build && npm run build:api",
     "db:dev": "npm --workspace mini-crm-api run db:dev",
