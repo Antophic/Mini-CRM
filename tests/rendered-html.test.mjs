@@ -15,22 +15,25 @@ test("build emits a Vite static app", async () => {
 });
 
 test("keeps the database-backed CRM wired to the app surface", async () => {
-  const [client, css, main, supabaseClient, packageJson, migration] =
+  const [client, css, main, apiClient, authApi, clientsApi, packageJson, schema] =
     await Promise.all([
     readFile(new URL("../src/MiniCrmApp.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/styles.css", import.meta.url), "utf8"),
     readFile(new URL("../src/main.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../src/supabaseClient.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/api/client.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/api/auth.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/api/clients.ts", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
-    readFile(
-      new URL("../supabase/migrations/001_create_crm_schema.sql", import.meta.url),
-      "utf8",
-    ),
+    readFile(new URL("../backend/prisma/schema.prisma", import.meta.url), "utf8"),
   ]);
 
-  assert.match(supabaseClient, /createClient/);
-  assert.match(client, /signInWithPassword/);
-  assert.match(client, /from\("clients"\)/);
+  assert.match(apiClient, /credentials:\s*"include"/);
+  assert.match(authApi, /\/auth\/login/);
+  assert.match(authApi, /\/auth\/register/);
+  assert.match(clientsApi, /\/clients/);
+  assert.match(client, /getCurrentUser/);
+  assert.match(client, /listClients/);
+  assert.match(client, /getDashboard/);
   assert.doesNotMatch(client, /localStorage/);
   assert.match(client, /handleSaveClient/);
   assert.match(client, /confirmDeleteClient/);
@@ -39,9 +42,13 @@ test("keeps the database-backed CRM wired to the app surface", async () => {
   assert.match(main, /<MiniCrmApp \/>/);
   assert.match(css, /\.summary-strip/);
   assert.match(css, /\.client-row/);
-  assert.match(migration, /enable row level security/i);
-  assert.match(migration, /auth\.uid\(\) = user_id/i);
-  assert.match(packageJson, /@supabase\/supabase-js/);
+  assert.match(schema, /model User/);
+  assert.match(schema, /model Client/);
+  assert.match(schema, /model ClientNote/);
+  assert.match(schema, /model ActivityLog/);
+  assert.match(schema, /model PipelineStage/);
+  assert.match(packageJson, /dev:api/);
+  assert.doesNotMatch(packageJson, /@supabase\/supabase-js/);
   assert.doesNotMatch(packageJson, /site-creator-vinext-starter/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
 });

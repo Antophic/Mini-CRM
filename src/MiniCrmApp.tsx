@@ -1,22 +1,33 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
-import type { Session } from "@supabase/supabase-js";
+import { ApiError } from "./api/client";
+import {
+  createClient,
+  createClientNote,
+  deleteClient,
+  listClients,
+  patchClient,
+  updateClient,
+} from "./api/clients";
+import { getDashboard } from "./api/dashboard";
+import {
+  getCurrentUser,
+  login,
+  logout,
+  register,
+} from "./api/auth";
+import { listPipelineStages } from "./api/pipeline";
 import { demoClients } from "./demoData";
 import {
-  demoEmail,
-  demoPassword,
-  isDemoAccountConfigured,
-  isSupabaseConfigured,
-  supabase,
-} from "./supabaseClient";
-import {
   statusOptions,
+  type AuthUser,
   type ClientForm,
   type ClientFormErrors,
   type ClientRecord,
-  type ClientRow,
+  type DashboardMetrics,
   type LeadStatus,
-  type NoteRow,
+  type Pagination,
+  type PipelineStage,
 } from "./types";
 
 const emptyForm: ClientForm = {
@@ -27,6 +38,24 @@ const emptyForm: ClientForm = {
   status: "New Lead",
   value: "",
   note: "",
+};
+
+const emptyDashboard: DashboardMetrics = {
+  active: 0,
+  activeValue: 0,
+  closeRate: 0,
+  notes: 0,
+  pipeline: [],
+  total: 0,
+  totalValue: 0,
+  won: 0,
+};
+
+const initialPagination: Pagination = {
+  limit: 10,
+  page: 1,
+  total: 0,
+  totalPages: 1,
 };
 
 const currencyFormatter = new Intl.NumberFormat("en-US", {
@@ -41,7 +70,7 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
   year: "numeric",
 });
 
-const statusClasses: Record<LeadStatus, string> = {
+const statusClasses: Record<string, string> = {
   "New Lead": "status-new",
   Contacted: "status-contacted",
   Proposal: "status-proposal",
@@ -55,13 +84,10 @@ type Toast = {
   tone: "success" | "error";
 };
 
+type AuthMode = "login" | "register";
+
 function isLeadStatus(value: string): value is LeadStatus {
   return statusOptions.includes(value as LeadStatus);
-}
-
-function normalizeValue(value: number | string | null) {
-  const parsed = Number(value ?? 0);
-  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function formatCurrency(value: number) {
@@ -95,34 +121,16 @@ function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
-function mapClientRows(clientRows: ClientRow[], noteRows: NoteRow[]) {
-  const notesByClient = new Map<string, NoteRow[]>();
+function getStatusClass(status: string) {
+  return statusClasses[status] ?? "status-new";
+}
 
-  for (const note of noteRows) {
-    const list = notesByClient.get(note.client_id) ?? [];
-    list.push(note);
-    notesByClient.set(note.client_id, list);
+function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof ApiError) {
+    return error.message;
   }
 
-  return clientRows.map((client) => ({
-    id: client.id,
-    userId: client.user_id,
-    name: client.name,
-    company: client.company,
-    email: client.email ?? "",
-    phone: client.phone ?? "",
-    status: client.status,
-    value: normalizeValue(client.deal_value),
-    createdAt: client.created_at,
-    updatedAt: client.updated_at,
-    notes: (notesByClient.get(client.id) ?? []).map((note) => ({
-      id: note.id,
-      clientId: note.client_id,
-      userId: note.user_id,
-      body: note.body,
-      createdAt: note.created_at,
-    })),
-  }));
+  return fallback;
 }
 
 function validateClientForm(form: ClientForm) {
@@ -160,17 +168,24 @@ function validateClientForm(form: ClientForm) {
 }
 
 export function MiniCrmApp() {
-  const [authLoading, setAuthLoading] = useState(isSupabaseConfigured);
-  const [session, setSession] = useState<Session | null>(null);
-  const [loginForm, setLoginForm] = useState({
-    email: demoEmail,
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authMode, setAuthMode] = useState<AuthMode>("login");
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [authForm, setAuthForm] = useState({
+    email: "",
+    name: "",
     password: "",
   });
-  const [loginSubmitting, setLoginSubmitting] = useState(false);
+  const [authSubmitting, setAuthSubmitting] = useState(false);
   const [authError, setAuthError] = useState("");
   const [clients, setClients] = useState<ClientRecord[]>([]);
   const [clientsLoading, setClientsLoading] = useState(false);
   const [clientsError, setClientsError] = useState("");
+  const [dashboard, setDashboard] = useState<DashboardMetrics>(emptyDashboard);
+  const [dashboardError, setDashboardError] = useState("");
+  const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([]);
+  const [pagination, setPagination] = useState<Pagination>(initialPagination);
+  const [page, setPage] = useState(1);
   const [form, setForm] = useState<ClientForm>(emptyForm);
   const [formErrors, setFormErrors] = useState<ClientFormErrors>({});
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -187,112 +202,90 @@ export function MiniCrmApp() {
   const [toast, setToast] = useState<Toast | null>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
 
-  const user = session?.user ?? null;
+  const availableStatuses = useMemo(
+    () => (pipelineStages.length ? pipelineStages.map((stage) => stage.label) : statusOptions),
+    [pipelineStages],
+  );
 
   const showToast = useCallback((message: string, tone: Toast["tone"]) => {
     setToast({ message, tone });
   }, []);
 
-  const loadClients = useCallback(
-    async (preferredClientId?: string) => {
-      if (!supabase || !user) {
-        return;
-      }
+  const loadDashboard = useCallback(async () => {
+    setDashboardError("");
 
+    try {
+      const response = await getDashboard();
+      setDashboard(response.dashboard);
+    } catch (error) {
+      setDashboardError(getErrorMessage(error, "Unable to load dashboard metrics."));
+    }
+  }, []);
+
+  const loadStages = useCallback(async () => {
+    try {
+      const response = await listPipelineStages();
+      setPipelineStages(response.stages);
+    } catch (error) {
+      console.error("Failed to load pipeline stages", error);
+    }
+  }, []);
+
+  const loadClients = useCallback(
+    async (preferredClientId?: string, requestedPage = page) => {
       setClientsLoading(true);
       setClientsError("");
 
       try {
-        const { data: clientRows, error: clientsLoadError } = await supabase
-          .from("clients")
-          .select(
-            "id,user_id,name,company,email,phone,status,deal_value,created_at,updated_at",
-          )
-          .order("updated_at", { ascending: false })
-          .returns<ClientRow[]>();
+        const response = await listClients({
+          limit: initialPagination.limit,
+          page: requestedPage,
+          search,
+          status: statusFilter,
+        });
 
-        if (clientsLoadError) {
-          throw clientsLoadError;
-        }
-
-        const clientIds = (clientRows ?? []).map((client) => client.id);
-        let noteRows: NoteRow[] = [];
-
-        if (clientIds.length > 0) {
-          const { data: notes, error: notesLoadError } = await supabase
-            .from("client_notes")
-            .select("id,client_id,user_id,body,created_at")
-            .in("client_id", clientIds)
-            .order("created_at", { ascending: false })
-            .returns<NoteRow[]>();
-
-          if (notesLoadError) {
-            throw notesLoadError;
-          }
-
-          noteRows = notes ?? [];
-        }
-
-        const mappedClients = mapClientRows(clientRows ?? [], noteRows);
-        setClients(mappedClients);
+        setClients(response.clients);
+        setPagination(response.pagination);
         setSelectedClientId((current) => {
           const preferred = preferredClientId ?? current;
-          return mappedClients.some((client) => client.id === preferred)
+          return response.clients.some((client) => client.id === preferred)
             ? preferred
-            : mappedClients[0]?.id ?? "";
+            : response.clients[0]?.id ?? "";
         });
       } catch (error) {
-        console.error("Failed to load clients", error);
-        setClientsError("We couldn't load your clients. Please try again.");
+        setClientsError(getErrorMessage(error, "Unable to load clients."));
       } finally {
         setClientsLoading(false);
       }
     },
-    [user],
+    [page, search, statusFilter],
   );
 
   useEffect(() => {
-    if (!supabase) {
-      return;
-    }
-
     let active = true;
 
-    async function loadSession() {
-      const { data, error } = await supabase!.auth.getSession();
+    async function restoreSession() {
+      try {
+        const response = await getCurrentUser();
 
-      if (!active) {
-        return;
+        if (active) {
+          setUser(response.user);
+        }
+      } catch (error) {
+        if (active && !(error instanceof ApiError && error.status === 401)) {
+          setAuthError("API server is not reachable. Start the backend and try again.");
+        }
+      } finally {
+        if (active) {
+          setAuthLoading(false);
+        }
       }
-
-      if (error) {
-        console.error("Failed to load auth session", error);
-        setAuthError("Unable to restore your session. Please sign in again.");
-      }
-
-      setSession(data.session);
-      setAuthLoading(false);
     }
 
-    void loadSession();
-
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, nextSession) => {
-        setSession(nextSession);
-
-        if (!nextSession) {
-          setClients([]);
-          setSelectedClientId("");
-          setEditingId(null);
-          setForm(emptyForm);
-          setNoteDraft("");
-        }
-      },
-    );
+    void restoreSession();
 
     return () => {
       active = false;
-      listener.subscription.unsubscribe();
     };
   }, []);
 
@@ -301,17 +294,20 @@ export function MiniCrmApp() {
       return;
     }
 
-    let cancelled = false;
+    queueMicrotask(() => {
+      void loadStages();
+      void loadDashboard();
+    });
+  }, [loadDashboard, loadStages, user]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
 
     queueMicrotask(() => {
-      if (!cancelled) {
-        void loadClients();
-      }
+      void loadClients();
     });
-
-    return () => {
-      cancelled = true;
-    };
   }, [loadClients, user]);
 
   useEffect(() => {
@@ -338,127 +334,68 @@ export function MiniCrmApp() {
     return () => window.removeEventListener("keydown", handleEscape);
   }, [deleteTarget]);
 
-  const dashboard = useMemo(() => {
-    const active = clients.filter(
-      (client) => client.status !== "Won" && client.status !== "Lost",
-    ).length;
-    const won = clients.filter((client) => client.status === "Won").length;
-    const lost = clients.filter((client) => client.status === "Lost").length;
-    const notes = clients.reduce((sum, client) => sum + client.notes.length, 0);
-    const activeValue = clients
-      .filter((client) => client.status !== "Won" && client.status !== "Lost")
-      .reduce((sum, client) => sum + client.value, 0);
-    const closed = won + lost;
-    const closeRate = closed ? Math.round((won / closed) * 100) : 0;
-
-    return {
-      active,
-      activeValue,
-      closeRate,
-      notes,
-      total: clients.length,
-      won,
-    };
-  }, [clients]);
-
-  const filteredClients = useMemo(() => {
-    const query = search.trim().toLowerCase();
-
-    return clients.filter((client) => {
-      const matchesStatus = statusFilter === "All" || client.status === statusFilter;
-      const searchSource = [
-        client.name,
-        client.company,
-        client.email,
-        client.phone,
-        client.status,
-        ...client.notes.map((note) => note.body),
-      ]
-        .join(" ")
-        .toLowerCase();
-
-      return matchesStatus && (!query || searchSource.includes(query));
-    });
-  }, [clients, search, statusFilter]);
-
   const selectedClient = useMemo(
     () => clients.find((client) => client.id === selectedClientId) ?? null,
     [clients, selectedClientId],
   );
 
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+  const hasActiveFilters = Boolean(search.trim() || statusFilter !== "All");
+
+  async function handleAuthSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!supabase) {
-      setAuthError("Supabase is not configured for this deployment.");
-      return;
-    }
-
-    const email = loginForm.email.trim();
-    const password = loginForm.password;
+    const email = authForm.email.trim();
+    const password = authForm.password;
 
     if (!email || !password) {
       setAuthError("Enter your email and password.");
       return;
     }
 
-    setLoginSubmitting(true);
-    setAuthError("");
-
-    try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) {
-        throw error;
-      }
-    } catch (error) {
-      console.error("Failed to sign in", error);
-      setAuthError("Unable to sign in. Check your email and password.");
-    } finally {
-      setLoginSubmitting(false);
-    }
-  }
-
-  async function handleDemoLogin() {
-    if (!isDemoAccountConfigured) {
-      setAuthError("Demo account is not configured for this deployment.");
+    if (authMode === "register" && password.length < 8) {
+      setAuthError("Password must contain at least 8 characters.");
       return;
     }
 
-    setLoginForm({ email: demoEmail, password: demoPassword });
-    setLoginSubmitting(true);
+    setAuthSubmitting(true);
     setAuthError("");
 
     try {
-      const { error } = await supabase!.auth.signInWithPassword({
-        email: demoEmail,
-        password: demoPassword,
-      });
+      const response =
+        authMode === "register"
+          ? await register({
+              email,
+              name: authForm.name.trim() || undefined,
+              password,
+            })
+          : await login(email, password);
 
-      if (error) {
-        throw error;
-      }
+      setUser(response.user);
+      setAuthForm({ email: "", name: "", password: "" });
+      showToast(
+        authMode === "register" ? "Account created successfully." : "Signed in successfully.",
+        "success",
+      );
     } catch (error) {
-      console.error("Failed to sign in with demo account", error);
-      setAuthError("Unable to access the demo account.");
+      setAuthError(getErrorMessage(error, "Unable to authenticate."));
     } finally {
-      setLoginSubmitting(false);
+      setAuthSubmitting(false);
     }
   }
 
   async function handleLogout() {
-    if (!supabase) {
-      return;
-    }
-
-    const { error } = await supabase.auth.signOut();
-
-    if (error) {
+    try {
+      await logout();
+    } catch (error) {
       console.error("Failed to sign out", error);
-      showToast("Unable to sign out. Please try again.", "error");
+    } finally {
+      setUser(null);
+      setClients([]);
+      setDashboard(emptyDashboard);
+      setSelectedClientId("");
+      setEditingId(null);
+      setForm(emptyForm);
+      setNoteDraft("");
     }
   }
 
@@ -483,61 +420,18 @@ export function MiniCrmApp() {
   }
 
   async function saveClientForm(clientForm: ClientForm, clientId?: string) {
-    if (!supabase || !user) {
-      throw new Error("Missing authenticated user.");
-    }
-
-    const value = Number(clientForm.value || 0);
-    const payload = {
-      user_id: user.id,
-      name: clientForm.name.trim(),
-      company: clientForm.company.trim(),
-      email: clientForm.email.trim() || null,
-      phone: clientForm.phone.trim() || null,
-      status: clientForm.status,
-      deal_value: value,
-    };
-
     if (clientId) {
-      const { error } = await supabase
-        .from("clients")
-        .update(payload)
-        .eq("id", clientId);
+      const response = await updateClient(clientId, clientForm);
 
-      if (error) {
-        throw error;
+      if (clientForm.note.trim()) {
+        await createClientNote(response.client.id, clientForm.note.trim());
       }
 
-      return clientId;
+      return response.client.id;
     }
 
-    const { data, error } = await supabase
-      .from("clients")
-      .insert(payload)
-      .select("id")
-      .single<{ id: string }>();
-
-    if (error) {
-      throw error;
-    }
-
-    return data.id;
-  }
-
-  async function insertNote(clientId: string, body: string) {
-    if (!supabase || !user || !body.trim()) {
-      return;
-    }
-
-    const { error } = await supabase.from("client_notes").insert({
-      client_id: clientId,
-      user_id: user.id,
-      body: body.trim(),
-    });
-
-    if (error) {
-      throw error;
-    }
+    const response = await createClient(clientForm);
+    return response.client.id;
   }
 
   async function handleSaveClient(event: FormEvent<HTMLFormElement>) {
@@ -554,16 +448,15 @@ export function MiniCrmApp() {
 
     try {
       const savedClientId = await saveClientForm(form, editingId ?? undefined);
-      await insertNote(savedClientId, form.note);
-      await loadClients(savedClientId);
+      setPage(1);
+      await Promise.all([loadClients(savedClientId, 1), loadDashboard()]);
       resetClientForm();
       showToast(
         editingId ? "Client updated successfully." : "Client added successfully.",
         "success",
       );
     } catch (error) {
-      console.error("Failed to save client", error);
-      showToast("Unable to save the client. Please try again.", "error");
+      showToast(getErrorMessage(error, "Unable to save the client."), "error");
     } finally {
       setSavingClient(false);
     }
@@ -586,59 +479,38 @@ export function MiniCrmApp() {
   }
 
   async function updateClientStatus(clientId: string, status: LeadStatus) {
-    if (!supabase) {
-      return;
-    }
-
     setStatusUpdatingId(clientId);
 
     try {
-      const { error } = await supabase
-        .from("clients")
-        .update({ status })
-        .eq("id", clientId);
-
-      if (error) {
-        throw error;
-      }
-
-      await loadClients(clientId);
+      await patchClient(clientId, { status });
+      await Promise.all([loadClients(clientId), loadDashboard()]);
       showToast("Client status updated.", "success");
     } catch (error) {
-      console.error("Failed to update status", error);
-      showToast("Unable to update the status. Please try again.", "error");
+      showToast(getErrorMessage(error, "Unable to update the status."), "error");
     } finally {
       setStatusUpdatingId(null);
     }
   }
 
   async function confirmDeleteClient() {
-    if (!supabase || !deleteTarget) {
+    if (!deleteTarget) {
       return;
     }
 
     setDeletingClient(true);
 
     try {
-      const { error } = await supabase
-        .from("clients")
-        .delete()
-        .eq("id", deleteTarget.id);
-
-      if (error) {
-        throw error;
-      }
+      await deleteClient(deleteTarget.id);
 
       if (editingId === deleteTarget.id) {
         resetClientForm();
       }
 
       setDeleteTarget(null);
-      await loadClients();
+      await Promise.all([loadClients(undefined), loadDashboard()]);
       showToast("Client deleted successfully.", "success");
     } catch (error) {
-      console.error("Failed to delete client", error);
-      showToast("Unable to delete the client. Please try again.", "error");
+      showToast(getErrorMessage(error, "Unable to delete the client."), "error");
     } finally {
       setDeletingClient(false);
     }
@@ -654,39 +526,33 @@ export function MiniCrmApp() {
     setNoteSubmitting(true);
 
     try {
-      await insertNote(selectedClient.id, noteDraft);
-      await loadClients(selectedClient.id);
+      await createClientNote(selectedClient.id, noteDraft.trim());
+      await Promise.all([loadClients(selectedClient.id), loadDashboard()]);
       setNoteDraft("");
       showToast("Note added.", "success");
     } catch (error) {
-      console.error("Failed to add note", error);
-      showToast("Unable to add the note. Please try again.", "error");
+      showToast(getErrorMessage(error, "Unable to add the note."), "error");
     } finally {
       setNoteSubmitting(false);
     }
   }
 
   async function loadDemoData() {
-    if (!user) {
-      return;
-    }
-
     setLoadingDemoData(true);
 
     try {
       let firstClientId = "";
 
       for (const demoClient of demoClients) {
-        const clientId = await saveClientForm(demoClient);
-        await insertNote(clientId, demoClient.note);
-        firstClientId ||= clientId;
+        const response = await createClient(demoClient);
+        firstClientId ||= response.client.id;
       }
 
-      await loadClients(firstClientId);
+      setPage(1);
+      await Promise.all([loadClients(firstClientId, 1), loadDashboard()]);
       showToast("Demo clients added successfully.", "success");
     } catch (error) {
-      console.error("Failed to add demo data", error);
-      showToast("Unable to add demo data. Please try again.", "error");
+      showToast(getErrorMessage(error, "Unable to add demo data."), "error");
     } finally {
       setLoadingDemoData(false);
     }
@@ -694,41 +560,6 @@ export function MiniCrmApp() {
 
   function focusClientForm() {
     nameInputRef.current?.focus();
-  }
-
-  if (!isSupabaseConfigured) {
-    return (
-      <main className="login-page">
-        <section className="login-shell setup-shell" aria-labelledby="setup-title">
-          <div className="login-panel">
-            <div className="brand-row">
-              <span className="brand-mark">M</span>
-              <div>
-                <p className="eyebrow">Setup Required</p>
-                <h1 id="setup-title">Mini CRM</h1>
-              </div>
-            </div>
-            <div className="setup-message">
-              <h2>Connect Supabase to run the CRM</h2>
-              <p>
-                Add the public Supabase URL and anon key to your environment
-                variables, then redeploy the application.
-              </p>
-              <code>VITE_SUPABASE_URL</code>
-              <code>VITE_SUPABASE_ANON_KEY</code>
-            </div>
-          </div>
-          <aside className="login-preview">
-            <p className="eyebrow">Portfolio Demo</p>
-            <p className="muted">
-              The app is ready for a database-backed deployment with
-              authentication, row-level security, client CRUD, notes, and sales
-              metrics.
-            </p>
-          </aside>
-        </section>
-      </main>
-    );
   }
 
   if (authLoading) {
@@ -753,36 +584,54 @@ export function MiniCrmApp() {
               </div>
             </div>
 
-            <form className="login-form" onSubmit={handleLogin}>
+            <form className="login-form" onSubmit={handleAuthSubmit}>
+              {authMode === "register" ? (
+                <label>
+                  Name
+                  <input
+                    autoComplete="name"
+                    name="name"
+                    onChange={(event) =>
+                      setAuthForm((current) => ({
+                        ...current,
+                        name: event.target.value,
+                      }))
+                    }
+                    placeholder="Sarah Mitchell"
+                    value={authForm.name}
+                  />
+                </label>
+              ) : null}
+
               <label>
                 Email
                 <input
                   autoComplete="email"
                   name="email"
                   onChange={(event) =>
-                    setLoginForm((current) => ({
+                    setAuthForm((current) => ({
                       ...current,
                       email: event.target.value,
                     }))
                   }
                   type="email"
-                  value={loginForm.email}
+                  value={authForm.email}
                 />
               </label>
 
               <label>
                 Password
                 <input
-                  autoComplete="current-password"
+                  autoComplete={authMode === "register" ? "new-password" : "current-password"}
                   name="password"
                   onChange={(event) =>
-                    setLoginForm((current) => ({
+                    setAuthForm((current) => ({
                       ...current,
                       password: event.target.value,
                     }))
                   }
                   type="password"
-                  value={loginForm.password}
+                  value={authForm.password}
                 />
               </label>
 
@@ -791,26 +640,29 @@ export function MiniCrmApp() {
               <div className="login-actions">
                 <button
                   className="button primary"
-                  disabled={loginSubmitting}
+                  disabled={authSubmitting}
                   type="submit"
                 >
-                  {loginSubmitting ? "Signing in..." : "Sign In"}
+                  {authSubmitting
+                    ? authMode === "register"
+                      ? "Creating..."
+                      : "Signing in..."
+                    : authMode === "register"
+                      ? "Create Account"
+                      : "Sign In"}
                 </button>
                 <button
                   className="button secondary"
-                  disabled={loginSubmitting || !isDemoAccountConfigured}
-                  onClick={handleDemoLogin}
+                  disabled={authSubmitting}
+                  onClick={() => {
+                    setAuthError("");
+                    setAuthMode((current) => (current === "login" ? "register" : "login"));
+                  }}
                   type="button"
                 >
-                  Demo Account
+                  {authMode === "login" ? "Create Account" : "Back to Sign In"}
                 </button>
               </div>
-
-              <p className="demo-hint">
-                {isDemoAccountConfigured
-                  ? `Demo: ${demoEmail}`
-                  : "Configure a demo account in Vercel environment variables."}
-              </p>
             </form>
           </div>
 
@@ -862,6 +714,7 @@ export function MiniCrmApp() {
 
         <div className="user-actions">
           <span className="user-chip">{user.email}</span>
+          <span className="role-chip">{user.role.toLowerCase()}</span>
           <button className="button ghost" onClick={handleLogout} type="button">
             Sign Out
           </button>
@@ -875,10 +728,12 @@ export function MiniCrmApp() {
             <h2>Manage prospects and follow-ups</h2>
           </div>
           <p>
-            Track leads, deal values, activities, and follow-ups from one simple
-            workspace.
+            Track leads, deal values, activities, and follow-ups from one
+            authenticated workspace.
           </p>
         </section>
+
+        {dashboardError ? <p className="form-error">{dashboardError}</p> : null}
 
         <section className="summary-strip" aria-label="Sales dashboard metrics">
           <article className="metric metric-total">
@@ -990,7 +845,7 @@ export function MiniCrmApp() {
                     onChange={handleFormChange}
                     value={form.status}
                   >
-                    {statusOptions.map((status) => (
+                    {availableStatuses.map((status) => (
                       <option key={status} value={status}>
                         {status}
                       </option>
@@ -1016,7 +871,7 @@ export function MiniCrmApp() {
               </div>
 
               <label>
-                Initial Note
+                {editingId ? "New Note" : "Initial Note"}
                 <textarea
                   name="note"
                   onChange={handleFormChange}
@@ -1052,7 +907,10 @@ export function MiniCrmApp() {
               <div className="filters">
                 <input
                   aria-label="Search clients"
-                  onChange={(event) => setSearch(event.target.value)}
+                  onChange={(event) => {
+                    setPage(1);
+                    setSearch(event.target.value);
+                  }}
                   placeholder="Search clients, companies, email, or notes"
                   value={search}
                 />
@@ -1060,12 +918,13 @@ export function MiniCrmApp() {
                   aria-label="Filter by status"
                   onChange={(event) => {
                     const value = event.target.value;
+                    setPage(1);
                     setStatusFilter(value === "All" ? "All" : (value as LeadStatus));
                   }}
                   value={statusFilter}
                 >
                   <option value="All">All Statuses</option>
-                  {statusOptions.map((status) => (
+                  {availableStatuses.map((status) => (
                     <option key={status} value={status}>
                       {status}
                     </option>
@@ -1088,86 +947,119 @@ export function MiniCrmApp() {
                   Try Again
                 </button>
               </div>
-            ) : filteredClients.length > 0 ? (
-              <div className="client-list-rows">
-                <div className="client-table-head" aria-hidden="true">
-                  <span>Client</span>
-                  <span>Status and value</span>
-                  <span>Actions</span>
+            ) : clients.length > 0 ? (
+              <>
+                <div className="client-list-rows">
+                  <div className="client-table-head" aria-hidden="true">
+                    <span>Client</span>
+                    <span>Status and value</span>
+                    <span>Actions</span>
+                  </div>
+                  {clients.map((client) => (
+                    <article
+                      className={`client-row ${
+                        client.id === selectedClientId ? "is-selected" : ""
+                      }`}
+                      key={client.id}
+                    >
+                      <button
+                        className="client-main"
+                        onClick={() => setSelectedClientId(client.id)}
+                        type="button"
+                      >
+                        <span className="client-avatar">
+                          {getInitials(client.name)}
+                        </span>
+                        <span className="client-copy">
+                          <strong>{client.name}</strong>
+                          <span>{client.company}</span>
+                          <small>{client.email || client.phone || "-"}</small>
+                        </span>
+                      </button>
+
+                      <div className="client-meta">
+                        <span
+                          className={`status-pill ${getStatusClass(client.status)}`}
+                        >
+                          {client.status}
+                        </span>
+                        <span>{formatCurrency(client.value)}</span>
+                        <span>{client.notes.length} notes</span>
+                      </div>
+
+                      <div className="client-actions">
+                        <select
+                          aria-label={`Change status for ${client.name}`}
+                          disabled={statusUpdatingId === client.id}
+                          onChange={(event) =>
+                            updateClientStatus(
+                              client.id,
+                              event.target.value as LeadStatus,
+                            )
+                          }
+                          value={client.status}
+                        >
+                          {availableStatuses.map((status) => (
+                            <option key={status} value={status}>
+                              {status}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          className="button secondary"
+                          disabled={savingClient}
+                          onClick={() => editClient(client)}
+                          type="button"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="button danger"
+                          disabled={deletingClient}
+                          onClick={() => setDeleteTarget(client)}
+                          type="button"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </article>
+                  ))}
                 </div>
-                {filteredClients.map((client) => (
-                  <article
-                    className={`client-row ${
-                      client.id === selectedClientId ? "is-selected" : ""
-                    }`}
-                    key={client.id}
-                  >
+
+                <div className="pagination-bar">
+                  <span>
+                    Page {pagination.page} of {pagination.totalPages} -{" "}
+                    {pagination.total} clients
+                  </span>
+                  <div>
                     <button
-                      className="client-main"
-                      onClick={() => setSelectedClientId(client.id)}
+                      className="button secondary"
+                      disabled={pagination.page <= 1 || clientsLoading}
+                      onClick={() => setPage((current) => Math.max(1, current - 1))}
                       type="button"
                     >
-                      <span className="client-avatar">
-                        {getInitials(client.name)}
-                      </span>
-                      <span className="client-copy">
-                        <strong>{client.name}</strong>
-                        <span>{client.company}</span>
-                        <small>{client.email || client.phone || "-"}</small>
-                      </span>
+                      Previous
                     </button>
-
-                    <div className="client-meta">
-                      <span
-                        className={`status-pill ${statusClasses[client.status]}`}
-                      >
-                        {client.status}
-                      </span>
-                      <span>{formatCurrency(client.value)}</span>
-                      <span>{client.notes.length} notes</span>
-                    </div>
-
-                    <div className="client-actions">
-                      <select
-                        aria-label={`Change status for ${client.name}`}
-                        disabled={statusUpdatingId === client.id}
-                        onChange={(event) =>
-                          updateClientStatus(
-                            client.id,
-                            event.target.value as LeadStatus,
-                          )
-                        }
-                        value={client.status}
-                      >
-                        {statusOptions.map((status) => (
-                          <option key={status} value={status}>
-                            {status}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        className="button secondary"
-                        disabled={savingClient}
-                        onClick={() => editClient(client)}
-                        type="button"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="button danger"
-                        disabled={deletingClient}
-                        onClick={() => setDeleteTarget(client)}
-                        type="button"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
+                    <button
+                      className="button secondary"
+                      disabled={
+                        pagination.page >= pagination.totalPages || clientsLoading
+                      }
+                      onClick={() =>
+                        setPage((current) =>
+                          Math.min(pagination.totalPages, current + 1),
+                        )
+                      }
+                      type="button"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              </>
             ) : (
               <div className="empty-state">
-                {clients.length === 0 ? (
+                {!hasActiveFilters ? (
                   <>
                     <h3>No clients yet</h3>
                     <p>Add your first prospect to start building your sales pipeline.</p>
@@ -1191,7 +1083,7 @@ export function MiniCrmApp() {
                   </>
                 ) : (
                   <>
-                    <h3>No clients match your search.</h3>
+                    <h3>No clients match your filters.</h3>
                     <p>Try a different keyword or status filter.</p>
                   </>
                 )}
@@ -1208,7 +1100,7 @@ export function MiniCrmApp() {
                     <h2 id="notes-title">{selectedClient.name}</h2>
                   </div>
                   <span
-                    className={`status-pill ${statusClasses[selectedClient.status]}`}
+                    className={`status-pill ${getStatusClass(selectedClient.status)}`}
                   >
                     {selectedClient.status}
                   </span>

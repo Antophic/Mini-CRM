@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+/backend/node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -38,6 +39,7 @@ dev-server*.log
 .vercel
 
 /dist/
+/backend/dist/
 /.wrangler/
 /outputs/
 /work/

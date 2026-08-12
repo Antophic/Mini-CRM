@@ -1,0 +1,335 @@
+openapi: 3.1.0
+info:
+  title: Mini CRM API
+  version: 0.1.0
+  description: REST API for the Mini CRM frontend. Mutating requests require the `X-CSRF-Protection: 1` header.
+servers:
+  - url: http://localhost:3000/api
+security:
+  - cookieAuth: []
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: mini_crm_token
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            details:
+              type:
+                - array
+                - object
+                - "null"
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        role:
+          enum: [ADMIN, USER]
+        createdAt:
+          type: string
+          format: date-time
+    Client:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        name:
+          type: string
+        company:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        status:
+          enum: [New Lead, Contacted, Proposal, Negotiation, Won, Lost]
+        value:
+          type: number
+        notes:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClientNote"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ClientNote:
+      type: object
+      properties:
+        id:
+          type: string
+        clientId:
+          type: string
+        userId:
+          type: string
+        body:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+paths:
+  /health:
+    get:
+      security: []
+      summary: Check API health.
+      responses:
+        "200":
+          description: API is running.
+  /auth/register:
+    post:
+      security: []
+      summary: Register a new user and set an HTTP-only JWT cookie.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+                password:
+                  type: string
+                  minLength: 8
+      responses:
+        "201":
+          description: Registered.
+        "409":
+          description: Email already registered.
+  /auth/login:
+    post:
+      security: []
+      summary: Sign in and set an HTTP-only JWT cookie.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Signed in.
+        "401":
+          description: Invalid credentials.
+  /auth/logout:
+    post:
+      summary: Clear the auth cookie.
+      responses:
+        "200":
+          description: Signed out.
+  /auth/me:
+    get:
+      summary: Return the authenticated user.
+      responses:
+        "200":
+          description: Current user.
+        "401":
+          description: Authentication required.
+  /clients:
+    get:
+      summary: List clients with pagination, search, and status filtering.
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - in: query
+          name: search
+          schema:
+            type: string
+        - in: query
+          name: status
+          schema:
+            enum: [New Lead, Contacted, Proposal, Negotiation, Won, Lost]
+      responses:
+        "200":
+          description: Paginated clients owned by the authenticated user.
+    post:
+      summary: Create a client.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, company, status, value]
+              properties:
+                name:
+                  type: string
+                company:
+                  type: string
+                email:
+                  type:
+                    - string
+                    - "null"
+                phone:
+                  type:
+                    - string
+                    - "null"
+                status:
+                  enum: [New Lead, Contacted, Proposal, Negotiation, Won, Lost]
+                value:
+                  type: number
+                note:
+                  type:
+                    - string
+                    - "null"
+      responses:
+        "201":
+          description: Created client.
+  /clients/{id}:
+    get:
+      summary: Read one client if the authenticated user is allowed.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Client.
+        "404":
+          description: Client not found or not accessible.
+    put:
+      summary: Replace a client.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated client.
+    patch:
+      summary: Partially update a client.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated client.
+    delete:
+      summary: Delete a client.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted client.
+  /clients/{id}/notes:
+    get:
+      summary: List notes for an authorized client.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Notes.
+    post:
+      summary: Add a note to an authorized client.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Created note.
+  /clients/{id}/notes/{noteId}:
+    put:
+      summary: Update a client note.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: noteId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated note.
+    delete:
+      summary: Delete a client note.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: noteId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted note.
+  /pipeline/stages:
+    get:
+      summary: List sales pipeline stages.
+      responses:
+        "200":
+          description: Pipeline stages.
+  /dashboard:
+    get:
+      summary: Return dashboard metrics calculated from database queries.
+      responses:
+        "200":
+          description: Dashboard metrics.

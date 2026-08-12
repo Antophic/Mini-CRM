@@ -15,6 +15,7 @@ export type ClientNote = {
   userId: string;
   body: string;
   createdAt: string;
+  updatedAt: string;
 };
 
 export type ClientRecord = {
@@ -43,23 +44,40 @@ export type ClientForm = {
 
 export type ClientFormErrors = Partial<Record<keyof ClientForm, string>>;
 
-export type ClientRow = {
+export type UserRole = "ADMIN" | "USER";
+
+export type AuthUser = {
   id: string;
-  user_id: string;
+  email: string;
   name: string;
-  company: string;
-  email: string | null;
-  phone: string | null;
-  status: LeadStatus;
-  deal_value: number | string | null;
-  created_at: string;
-  updated_at: string;
+  role: UserRole;
+  createdAt: string;
 };
 
-export type NoteRow = {
-  id: string;
-  client_id: string;
-  user_id: string;
-  body: string;
-  created_at: string;
+export type Pagination = {
+  limit: number;
+  page: number;
+  total: number;
+  totalPages: number;
+};
+
+export type PipelineStage = {
+  clients?: number;
+  isClosed: boolean;
+  isWon: boolean;
+  key: string;
+  label: LeadStatus;
+  sortOrder: number;
+  value?: number;
+};
+
+export type DashboardMetrics = {
+  active: number;
+  activeValue: number;
+  closeRate: number;
+  notes: number;
+  pipeline: PipelineStage[];
+  total: number;
+  totalValue: number;
+  won: number;
 };

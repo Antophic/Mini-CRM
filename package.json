@@ -5,16 +5,24 @@
   "engines": {
     "node": ">=22.13.0"
   },
+  "workspaces": [
+    "backend"
+  ],
   "scripts": {
     "dev": "vite",
+    "dev:api": "npm --workspace mini-crm-api run dev",
     "build": "vite build",
+    "build:api": "npm --workspace mini-crm-api run build",
+    "build:all": "npm run build && npm run build:api",
+    "db:dev": "npm --workspace mini-crm-api run db:dev",
+    "db:migrate": "npm --workspace mini-crm-api run db:migrate",
+    "db:seed": "npm --workspace mini-crm-api run db:seed",
     "start": "vite preview",
-    "test": "npm run build && node --test tests/rendered-html.test.mjs",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint . --ignore-pattern dist"
+    "test": "npm run build && node --test tests/rendered-html.test.mjs && npm --workspace mini-crm-api test",
+    "typecheck": "tsc --noEmit && npm --workspace mini-crm-api run typecheck",
+    "lint": "eslint src api tests vite.config.ts --ignore-pattern dist && npm --workspace mini-crm-api run lint"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.112.2",
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },

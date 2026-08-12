@@ -478,6 +478,18 @@ h3 {
   white-space: nowrap;
 }
 
+.role-chip {
+  background: #ecfdf3;
+  border: 1px solid #bbf7d0;
+  border-radius: 999px;
+  color: #166534;
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 0.42rem 0.68rem;
+  text-transform: uppercase;
+}
+
 .crm-layout {
   margin: 0 auto;
   max-width: 1360px;
@@ -805,6 +817,23 @@ h3 {
   padding: 1rem;
 }
 
+.pagination-bar {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  display: flex;
+  font-size: 0.86rem;
+  font-weight: 700;
+  gap: 0.75rem;
+  justify-content: space-between;
+  padding-top: 0.9rem;
+}
+
+.pagination-bar div {
+  display: flex;
+  gap: 0.55rem;
+}
+
 .client-detail {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -937,6 +966,7 @@ h3 {
 @media (max-width: 760px) {
   .topbar,
   .user-actions,
+  .pagination-bar,
   .panel-heading,
   .list-heading,
   .form-row,
@@ -976,6 +1006,7 @@ h3 {
 
   .client-actions .button,
   .client-actions select,
+  .pagination-bar .button,
   .login-actions .button,
   .empty-actions .button,
   .modal-actions .button {

@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique @db.VarChar(255)
+  passwordHash String        @map("password_hash") @db.VarChar(255)
+  name         String?       @db.VarChar(120)
+  role         UserRole      @default(USER)
+  clients      Client[]
+  notes        ClientNote[]
+  activities   ActivityLog[]
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+model PipelineStage {
+  key       String   @id @db.VarChar(40)
+  label     String   @db.VarChar(80)
+  sortOrder Int      @map("sort_order")
+  isWon     Boolean  @default(false) @map("is_won")
+  isClosed  Boolean  @default(false) @map("is_closed")
+  clients   Client[]
+
+  @@map("pipeline_stages")
+}
+
+model Client {
+  id        String        @id @default(cuid())
+  userId    String        @map("user_id")
+  stageKey  String        @default("new_lead") @map("stage_key") @db.VarChar(40)
+  name      String        @db.VarChar(120)
+  company   String        @db.VarChar(160)
+  email     String?       @db.VarChar(255)
+  phone     String?       @db.VarChar(40)
+  dealValue Decimal       @default(0) @map("deal_value") @db.Decimal(12, 2)
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stage     PipelineStage @relation(fields: [stageKey], references: [key], onUpdate: Cascade)
+  notes     ClientNote[]
+  activities ActivityLog[]
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([userId, stageKey])
+  @@index([userId, updatedAt])
+  @@index([company])
+  @@map("clients")
+}
+
+model ClientNote {
+  id        String   @id @default(cuid())
+  clientId  String   @map("client_id")
+  userId    String   @map("user_id")
+  body      String   @db.Text
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([clientId])
+  @@index([userId, createdAt])
+  @@map("client_notes")
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  clientId  String?  @map("client_id")
+  action    String   @db.VarChar(80)
+  entity    String   @db.VarChar(80)
+  entityId  String?  @map("entity_id")
+  metadata  Json?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client    Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@index([clientId])
+  @@map("activity_logs")
+}
