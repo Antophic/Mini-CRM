@@ -19,7 +19,8 @@ const optionalNumberFromEnv = (fallback: number) =>
       return fallback;
     }
 
-    return value;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
   }, z.coerce.number().int().positive());
 
 const envSchema = z.object({
