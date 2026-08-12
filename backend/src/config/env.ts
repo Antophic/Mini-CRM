@@ -13,6 +13,15 @@ const booleanFromEnv = z.preprocess((value) => {
   return false;
 }, z.boolean());
 
+const optionalNumberFromEnv = (fallback: number) =>
+  z.preprocess((value) => {
+    if (value === undefined || value === null || value === "") {
+      return fallback;
+    }
+
+    return value;
+  }, z.coerce.number().int().positive());
+
 const envSchema = z.object({
   COOKIE_NAME: z.string().min(1).default("mini_crm_token"),
   COOKIE_SAME_SITE: z.enum(["strict", "lax", "none"]).default("lax"),
@@ -24,9 +33,9 @@ const envSchema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
     .default("development"),
-  PORT: z.coerce.number().int().positive().default(3000),
-  RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
-  RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(900000),
+  PORT: optionalNumberFromEnv(3000),
+  RATE_LIMIT_MAX: optionalNumberFromEnv(300),
+  RATE_LIMIT_WINDOW_MS: optionalNumberFromEnv(900000),
   REQUEST_BODY_LIMIT: z.string().min(1).default("100kb"),
 });
 
