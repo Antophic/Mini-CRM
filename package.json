@@ -10,9 +10,11 @@
     "build": "vite build",
     "start": "vite preview",
     "test": "npm run build && node --test tests/rendered-html.test.mjs",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint . --ignore-pattern dist"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.2",
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },

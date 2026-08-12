@@ -1,44 +1,84 @@
 # Mini CRM
 
-Aplikasi Mini CRM sederhana yang berjalan end-to-end di browser.
+A lightweight sales pipeline management web application built for small businesses and freelance portfolio demos.
 
-## Fitur
+## Features
 
-- Login demo dengan session lokal.
-- Tambah client baru.
-- Edit dan hapus client.
-- Status lead: Baru, Dihubungi, Proposal, Menang, Kalah.
-- Notes per client.
-- Search dan filter status.
-- Dashboard jumlah client, lead aktif, deal menang, dan nilai pipeline.
-- Data tersimpan di `localStorage`.
+- Supabase authentication
+- Client CRUD
+- Sales pipeline statuses
+- Deal value tracking in USD
+- Client notes and activity tracking
+- Search and status filtering
+- Dashboard metrics
+- Multi-user data isolation with row-level security
+- Responsive business SaaS interface
 
-## Jalankan Lokal
+## Tech Stack
+
+- React
+- TypeScript
+- Vite
+- Supabase Auth
+- Supabase PostgreSQL
+- Vercel
+
+## Project Purpose
+
+Mini CRM demonstrates a small internal business tool: authenticated access, user-owned records, CRUD workflows, pipeline tracking, database-backed notes, responsive dashboards, and production deployment readiness.
+
+## Environment Variables
+
+Create `.env.local` for local development or configure the same values in Vercel:
+
+```bash
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+VITE_DEMO_EMAIL=
+VITE_DEMO_PASSWORD=
+```
+
+`VITE_DEMO_EMAIL` and `VITE_DEMO_PASSWORD` are optional public demo account values. Create that user in Supabase Auth before enabling the demo login button.
+
+## Database Setup
+
+Apply the SQL migration in:
+
+```text
+supabase/migrations/001_create_crm_schema.sql
+```
+
+The migration creates:
+
+- `clients`
+- `client_notes`
+- ownership columns
+- status constraints
+- indexes
+- update timestamp trigger
+- row-level security policies for select, insert, update, and delete
+
+## Run Locally
 
 ```bash
 npm install
 npm run dev
 ```
 
-Buka URL lokal yang muncul di terminal.
+## Deploy to Vercel
 
-## Deploy ke Vercel
-
-Gunakan pengaturan berikut:
+Use these settings:
 
 - Framework/Preset: `Vite`
 - Root Directory: `./`
 - Build Command: `npm run build`
 - Output Directory: `dist`
 
-Login demo:
+Add the environment variables in Vercel before deploying.
 
-- Email: `demo@minicrm.test`
-- Password: `password`
-
-## Build dan Test
+## Quality Checks
 
 ```bash
-npm run build
+npm run lint
 npm test
 ```
