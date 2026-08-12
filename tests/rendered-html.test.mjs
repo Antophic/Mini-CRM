@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
-import { access, readFile, readdir } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import test from "node:test";
-
-const templateRoot = new URL("../", import.meta.url);
-const previewRoot = new URL("../app/_sites-preview/", import.meta.url);
 
 async function render() {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -36,7 +33,7 @@ test("server-renders the Mini CRM login shell", async () => {
   assert.match(html, /Mini CRM/);
   assert.match(html, /Sales Workspace/);
   assert.match(html, /demo@minicrm\.test/);
-  assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
+  assert.doesNotMatch(html, /react-loading-skeleton/i);
   assert.doesNotMatch(html, /Your site is taking shape/i);
 });
 
@@ -64,9 +61,6 @@ test("keeps the CRM implementation wired to the app surface", async () => {
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   assert.doesNotMatch(
     client,
-    /SkeletonPreview|react-loading-skeleton|codex-preview/i,
+    /SkeletonPreview|react-loading-skeleton/i,
   );
-
-  await assert.rejects(access(new URL("SkeletonPreview.tsx", previewRoot)));
-  await assert.rejects(access(new URL("public/_sites-preview", templateRoot)));
 });

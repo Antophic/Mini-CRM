@@ -39,3 +39,4 @@ dev-server*.log
 /.wrangler/
 /outputs/
 /work/
+.openai/
