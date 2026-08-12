@@ -25,6 +25,12 @@ app.use(
     legacyHeaders: false,
     limit: env.RATE_LIMIT_MAX,
     standardHeaders: true,
+    validate: {
+      forwardedHeader: false,
+      ip: false,
+      trustProxy: false,
+      xForwardedForHeader: false,
+    },
     windowMs: env.RATE_LIMIT_WINDOW_MS,
   }),
 );
