@@ -1,6 +1,6 @@
 # Mini CRM
 
-Project Portfolio #1: aplikasi Mini CRM sederhana yang berjalan end-to-end di browser.
+Aplikasi Mini CRM sederhana yang berjalan end-to-end di browser.
 
 ## Fitur
 
@@ -21,6 +21,15 @@ npm run dev
 ```
 
 Buka URL lokal yang muncul di terminal.
+
+## Deploy ke Vercel
+
+Gunakan pengaturan berikut:
+
+- Framework/Preset: `Vite`
+- Root Directory: `./`
+- Build Command: `npm run build`
+- Output Directory: `dist`
 
 Login demo:
 

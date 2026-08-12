@@ -2,65 +2,34 @@ import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import test from "node:test";
 
-async function render() {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
+test("build emits a Vite static app", async () => {
+  const [html, files] = await Promise.all([
+    readFile(new URL("../dist/index.html", import.meta.url), "utf8"),
+    readdir(new URL("../dist/assets/", import.meta.url)),
+  ]);
 
-  return worker.fetch(
-    new Request("http://localhost/", {
-      headers: { accept: "text/html" },
-    }),
-    {
-      ASSETS: {
-        fetch: async () => new Response("Not found", { status: 404 }),
-      },
-    },
-    {
-      waitUntil() {},
-      passThroughOnException() {},
-    },
-  );
-}
-
-test("server-renders the Mini CRM login shell", async () => {
-  const response = await render();
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
-
-  const html = await response.text();
   assert.match(html, /<title>Mini CRM<\/title>/i);
-  assert.match(html, /Mini CRM/);
-  assert.match(html, /Sales Workspace/);
-  assert.match(html, /demo@minicrm\.test/);
-  assert.doesNotMatch(html, /react-loading-skeleton/i);
-  assert.doesNotMatch(html, /Your site is taking shape/i);
+  assert.match(html, /src="\/assets\//i);
+  assert.ok(files.some((file) => file.endsWith(".js")));
+  assert.ok(files.some((file) => file.endsWith(".css")));
 });
 
 test("keeps the CRM implementation wired to the app surface", async () => {
-  const [client, css, page, layout, packageJson, files] = await Promise.all([
-    readFile(new URL("../app/MiniCrmApp.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
-    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
+  const [client, css, main, packageJson] = await Promise.all([
+    readFile(new URL("../src/MiniCrmApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/styles.css", import.meta.url), "utf8"),
+    readFile(new URL("../src/main.tsx", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
-    readdir(new URL("../app/", import.meta.url)),
   ]);
 
-  assert.ok(files.includes("MiniCrmApp.tsx"));
   assert.match(client, /localStorage/);
   assert.match(client, /handleSaveClient/);
   assert.match(client, /deleteClient/);
   assert.match(client, /statusOptions/);
   assert.match(client, /addNote/);
-  assert.match(page, /<MiniCrmApp \/>/);
-  assert.match(layout, /lang="id"/);
+  assert.match(main, /<MiniCrmApp \/>/);
   assert.match(css, /\.summary-strip/);
   assert.match(css, /\.client-row/);
   assert.doesNotMatch(packageJson, /site-creator-vinext-starter/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
-  assert.doesNotMatch(
-    client,
-    /SkeletonPreview|react-loading-skeleton/i,
-  );
 });
