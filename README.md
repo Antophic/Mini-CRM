@@ -2,12 +2,12 @@
 
 Sales Pipeline Management for Small Businesses
 
-[Live Demo](https://mini-crm-opal-two.vercel.app) · [Repository](https://github.com/Antophic/Mini-CRM)
+[Live Demo](https://mini-crm-opal-two.vercel.app) | [Repository](https://github.com/Antophic/Mini-CRM)
 
 Mini CRM is a full-stack sales workspace for tracking prospects, deal values,
 follow-ups, and client activity in one lightweight application.
 
-![Mini CRM dashboard preview](public/mini-crm-preview.svg)
+![Mini CRM Dashboard](public/mini-crm-dashboard.webp)
 
 ## Problem
 
@@ -231,9 +231,13 @@ REQUEST_BODY_LIMIT="100kb"
 VITE_API_URL="/api"
 ```
 
-Laragon is only for local development. Vercel cannot connect to MySQL running on your laptop. Use an online MySQL provider such as Railway, Aiven, PlanetScale-compatible MySQL, DigitalOcean Managed MySQL, or another public MySQL host.
+Laragon is only for local development. Vercel cannot connect to MySQL running on
+your laptop. Use an online MySQL provider such as Railway, Aiven,
+PlanetScale-compatible MySQL, DigitalOcean Managed MySQL, or another public
+MySQL host.
 
-After setting `DATABASE_URL` for the online database, run the migration against that production database:
+After setting `DATABASE_URL` for the online database, run the migration against
+that production database:
 
 ```bash
 npm run db:migrate

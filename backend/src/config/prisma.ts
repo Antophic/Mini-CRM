@@ -1,6 +1,6 @@
 import { PrismaClient } from "@prisma/client";
-import { isProduction } from "./env.js";
+import { env, isProduction } from "./env.js";
 
 export const prisma = new PrismaClient({
-  log: isProduction ? ["error"] : ["query", "warn", "error"],
+  log: env.NODE_ENV === "test" ? [] : isProduction ? ["error"] : ["query", "warn", "error"],
 });

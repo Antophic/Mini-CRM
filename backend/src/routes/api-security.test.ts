@@ -9,6 +9,7 @@ process.env.JWT_EXPIRES_IN = "1h";
 process.env.NODE_ENV = "test";
 
 const { app } = await import("../app.js");
+const { prisma } = await import("../config/prisma.js");
 
 async function request(path: string, init: RequestInit = {}) {
   const server = app.listen(0);
@@ -17,6 +18,7 @@ async function request(path: string, init: RequestInit = {}) {
   try {
     const response = await fetch(`http://127.0.0.1:${port}${path}`, init);
     const body = (await response.json()) as {
+      data?: unknown;
       error?: { code?: string };
       message?: string;
       success: boolean;
@@ -24,6 +26,7 @@ async function request(path: string, init: RequestInit = {}) {
 
     return {
       body,
+      headers: response.headers,
       status: response.status,
     };
   } finally {
@@ -38,6 +41,28 @@ async function request(path: string, init: RequestInit = {}) {
       });
     });
   }
+}
+
+async function hasIntegrationDatabase() {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    await prisma.user.count();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function csrfJsonHeaders(cookie?: string) {
+  return {
+    "Content-Type": "application/json",
+    "X-CSRF-Protection": "1",
+    ...(cookie ? { Cookie: cookie } : {}),
+  };
+}
+
+function sessionCookie(headers: Headers) {
+  return headers.get("set-cookie")?.split(";")[0] ?? "";
 }
 
 test("health endpoint is public", async () => {
@@ -89,4 +114,100 @@ test("unknown routes return a consistent 404 response", async () => {
 
   assert.equal(response.status, 404);
   assert.equal(response.body.error?.code, "ROUTE_NOT_FOUND");
+});
+
+test("client ownership prevents cross-user access", async (context) => {
+  if (!(await hasIntegrationDatabase())) {
+    context.skip("MySQL integration database is not available or migrated.");
+    return;
+  }
+
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const userAEmail = `owner-a-${suffix}@example.test`;
+  const userBEmail = `owner-b-${suffix}@example.test`;
+
+  context.after(async () => {
+    await prisma.user.deleteMany({
+      where: {
+        email: {
+          in: [userAEmail, userBEmail],
+        },
+      },
+    });
+  });
+
+  const userA = await request("/api/auth/register", {
+    body: JSON.stringify({
+      email: userAEmail,
+      name: "Owner A",
+      password: "password123",
+    }),
+    headers: csrfJsonHeaders(),
+    method: "POST",
+  });
+  const userB = await request("/api/auth/register", {
+    body: JSON.stringify({
+      email: userBEmail,
+      name: "Owner B",
+      password: "password123",
+    }),
+    headers: csrfJsonHeaders(),
+    method: "POST",
+  });
+  const userACookie = sessionCookie(userA.headers);
+  const userBCookie = sessionCookie(userB.headers);
+
+  assert.equal(userA.status, 201);
+  assert.equal(userB.status, 201);
+  assert.ok(userACookie);
+  assert.ok(userBCookie);
+
+  const created = await request("/api/clients", {
+    body: JSON.stringify({
+      company: "Owner A Company",
+      email: "client-a@example.test",
+      name: "Client A",
+      phone: "+1 555 0100",
+      status: "New Lead",
+      value: 2400,
+    }),
+    headers: csrfJsonHeaders(userACookie),
+    method: "POST",
+  });
+  const clientId = (created.body.data as { client?: { id?: string } } | undefined)?.client?.id;
+
+  assert.equal(created.status, 201);
+  assert.ok(clientId);
+
+  const crossUserGet = await request(`/api/clients/${clientId}`, {
+    headers: {
+      Cookie: userBCookie,
+    },
+  });
+  const crossUserUpdate = await request(`/api/clients/${clientId}`, {
+    body: JSON.stringify({
+      company: "Blocked Company",
+      email: "blocked@example.test",
+      name: "Blocked Client",
+      phone: "+1 555 0199",
+      status: "Contacted",
+      value: 999,
+    }),
+    headers: csrfJsonHeaders(userBCookie),
+    method: "PUT",
+  });
+  const crossUserDelete = await request(`/api/clients/${clientId}`, {
+    headers: csrfJsonHeaders(userBCookie),
+    method: "DELETE",
+  });
+  const ownerGet = await request(`/api/clients/${clientId}`, {
+    headers: {
+      Cookie: userACookie,
+    },
+  });
+
+  assert.ok([403, 404].includes(crossUserGet.status));
+  assert.ok([403, 404].includes(crossUserUpdate.status));
+  assert.ok([403, 404].includes(crossUserDelete.status));
+  assert.equal(ownerGet.status, 200);
 });

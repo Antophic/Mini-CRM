@@ -46,7 +46,7 @@ export function useAuth(showToast: ToastCallback) {
         }
       } catch (error) {
         if (active && !(error instanceof ApiError && error.status === 401)) {
-          setAuthError("API server is not reachable. Start the backend and try again.");
+          setAuthError("Unable to connect to the service. Please try again.");
         }
       } finally {
         if (active) {

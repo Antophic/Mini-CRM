@@ -924,6 +924,23 @@ h3 {
   margin-top: 1.2rem;
 }
 
+@media (max-width: 1500px) {
+  .client-row,
+  .client-table-head {
+    grid-template-columns: minmax(190px, 1fr) minmax(170px, 0.8fr);
+  }
+
+  .client-table-head span:last-child {
+    display: none;
+  }
+
+  .client-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    min-width: 0;
+  }
+}
+
 @media (max-width: 1180px) {
   .work-grid {
     grid-template-columns: minmax(290px, 0.9fr) minmax(440px, 1.2fr);
