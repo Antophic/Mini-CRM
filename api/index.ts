@@ -26,22 +26,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     const { app } = await import("../backend/src/app.js");
     app(req, res);
   } catch (error) {
-    const detail =
-      error instanceof Error
-        ? {
-            message: error.message,
-            name: error.name,
-          }
-        : {
-            message: "Unknown backend boot error",
-            name: "UnknownError",
-          };
-
-    console.error("Backend boot failed", detail);
+    console.error("Backend boot failed", error);
     sendJson(res, 500, {
       error: {
         code: "BACKEND_BOOT_FAILED",
-        detail,
       },
       message: "API failed to start.",
       success: false,

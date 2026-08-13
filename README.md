@@ -1,13 +1,33 @@
 # Mini CRM
 
-A full-stack sales pipeline CRM for portfolio and small business workflows.
+Sales Pipeline Management for Small Businesses
+
+[Live Demo](https://mini-crm-opal-two.vercel.app) · [Repository](https://github.com/Antophic/Mini-CRM)
+
+Mini CRM is a full-stack sales workspace for tracking prospects, deal values,
+follow-ups, and client activity in one lightweight application.
+
+![Mini CRM dashboard preview](public/mini-crm-preview.svg)
+
+## Problem
+
+Small businesses often manage leads with spreadsheets, scattered notes, and
+manual follow-up lists. That makes it easy to lose context, miss opportunities,
+or forget which deal needs attention next.
+
+## Solution
+
+Mini CRM provides a focused workspace for managing clients through a sales
+pipeline. Users can register, sign in, add prospects, track statuses, store
+notes, filter records, and monitor dashboard metrics from a real database-backed
+application.
 
 ## Features
 
 - Register, login, logout, and current-user session check
 - JWT authentication with HTTP-only cookies
 - User roles: `USER` and `ADMIN`
-- Client CRUD with ownership authorization
+- Role-based ownership authorization
 - Client notes CRUD
 - Sales pipeline stages
 - Dashboard metrics from database queries
@@ -25,6 +45,13 @@ A full-stack sales pipeline CRM for portfolio and small business workflows.
 - ORM: Prisma
 - Auth: JWT, bcrypt password hashing
 - Validation: Zod
+
+## Authorization Model
+
+Mini CRM uses role-based ownership authorization. Standard users can access only
+their own CRM records, while administrators can access system-wide records for
+operations and oversight. The same rule is applied to client data, notes,
+pipeline views, and dashboard metrics.
 
 ## Project Structure
 
@@ -48,6 +75,10 @@ backend/
     validators/
 src/
   api/
+  components/
+  constants/
+  hooks/
+  utils/
   MiniCrmApp.tsx
   demoData.ts
   styles.css

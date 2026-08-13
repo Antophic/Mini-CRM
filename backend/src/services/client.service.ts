@@ -1,8 +1,9 @@
+import type { Prisma } from "@prisma/client";
+import { prisma } from "../config/prisma.js";
 import type { AuthenticatedUser } from "../types/express.js";
 import { getStageKeyFromInput } from "../constants/pipeline.js";
 import { activityRepository } from "../repositories/activity.repository.js";
 import { clientRepository } from "../repositories/client.repository.js";
-import { noteRepository } from "../repositories/note.repository.js";
 import { AppError } from "../utils/app-error.js";
 import { toClientDto } from "../utils/dto.js";
 import type {
@@ -27,6 +28,17 @@ function actorFromUser(user: AuthenticatedUser) {
     id: user.id,
     role: user.role,
   };
+}
+
+function clientInclude() {
+  return {
+    notes: {
+      orderBy: {
+        createdAt: "desc",
+      },
+    },
+    stage: true,
+  } satisfies Prisma.ClientInclude;
 }
 
 async function updateClientRecord(
@@ -61,29 +73,51 @@ async function updateClientRecord(
 export const clientService = {
   async create(input: CreateClientInput, user: AuthenticatedUser) {
     const actor = actorFromUser(user);
-    const client = await clientRepository.create(actor, {
-      company: input.company,
-      email: input.email,
-      name: input.name,
-      phone: input.phone,
-      stageKey: toStageKey(input.status),
-      value: input.value,
+    const stageKey = toStageKey(input.status);
+
+    const client = await prisma.$transaction(async (tx) => {
+      const createdClient = await tx.client.create({
+        data: {
+          company: input.company,
+          dealValue: input.value,
+          email: input.email ?? null,
+          name: input.name,
+          phone: input.phone ?? null,
+          stageKey,
+          userId: actor.id,
+        },
+        include: clientInclude(),
+      });
+
+      if (input.note) {
+        await tx.clientNote.create({
+          data: {
+            body: input.note,
+            clientId: createdClient.id,
+            userId: actor.id,
+          },
+        });
+      }
+
+      await tx.activityLog.create({
+        data: {
+          action: "CLIENT_CREATED",
+          clientId: createdClient.id,
+          entity: "client",
+          entityId: createdClient.id,
+          userId: user.id,
+        },
+      });
+
+      return tx.client.findUniqueOrThrow({
+        include: clientInclude(),
+        where: {
+          id: createdClient.id,
+        },
+      });
     });
 
-    if (input.note) {
-      await noteRepository.create(client.id, actor, input.note);
-    }
-
-    await activityRepository.create({
-      action: "CLIENT_CREATED",
-      clientId: client.id,
-      entity: "client",
-      entityId: client.id,
-      userId: user.id,
-    });
-
-    const reloaded = await clientRepository.findAuthorized(client.id, actor);
-    return toClientDto(reloaded ?? client);
+    return toClientDto(client);
   },
 
   async getById(id: string, user: AuthenticatedUser) {

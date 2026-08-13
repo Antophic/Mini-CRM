@@ -15,30 +15,53 @@ test("build emits a Vite static app", async () => {
 });
 
 test("keeps the database-backed CRM wired to the app surface", async () => {
-  const [client, css, main, apiClient, authApi, clientsApi, packageJson, schema] =
-    await Promise.all([
+  const [
+    app,
+    css,
+    main,
+    apiClient,
+    authApi,
+    clientsApi,
+    useAuthHook,
+    useClientsHook,
+    useDashboardHook,
+    clientFormUtils,
+    packageJson,
+    schema,
+  ] = await Promise.all([
     readFile(new URL("../src/MiniCrmApp.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/styles.css", import.meta.url), "utf8"),
     readFile(new URL("../src/main.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/api/client.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/api/auth.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/api/clients.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/hooks/useAuth.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/hooks/useClients.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/hooks/useDashboard.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/utils/clientForm.ts", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../backend/prisma/schema.prisma", import.meta.url), "utf8"),
   ]);
+  const appSurface = [
+    app,
+    useAuthHook,
+    useClientsHook,
+    useDashboardHook,
+    clientFormUtils,
+  ].join("\n");
 
   assert.match(apiClient, /credentials:\s*"include"/);
   assert.match(authApi, /\/auth\/login/);
   assert.match(authApi, /\/auth\/register/);
   assert.match(clientsApi, /\/clients/);
-  assert.match(client, /getCurrentUser/);
-  assert.match(client, /listClients/);
-  assert.match(client, /getDashboard/);
-  assert.doesNotMatch(client, /localStorage/);
-  assert.match(client, /handleSaveClient/);
-  assert.match(client, /confirmDeleteClient/);
-  assert.match(client, /statusOptions/);
-  assert.match(client, /addNote/);
+  assert.match(useAuthHook, /getCurrentUser/);
+  assert.match(useClientsHook, /listClients/);
+  assert.match(useDashboardHook, /getDashboard/);
+  assert.doesNotMatch(appSurface, /localStorage/);
+  assert.match(app, /handleSaveClient/);
+  assert.match(app, /confirmDeleteClient/);
+  assert.match(clientFormUtils, /statusOptions/);
+  assert.match(app, /addNote/);
   assert.match(main, /<MiniCrmApp \/>/);
   assert.match(css, /\.summary-strip/);
   assert.match(css, /\.client-row/);
