@@ -1,4 +1,5 @@
 import type { FormEvent } from "react";
+import { BrandMark } from "./BrandMark";
 import { demoClients } from "../demoData";
 import type { AuthFormState, AuthMode } from "../hooks/useAuth";
 import { formatCurrency, getInitials } from "../utils/formatters";
@@ -27,7 +28,7 @@ export function AuthForm({
       <section className="login-shell" aria-labelledby="login-title">
         <div className="login-panel">
           <div className="brand-row">
-            <span className="brand-mark">M</span>
+            <BrandMark />
             <div>
               <p className="eyebrow">Sales Workspace</p>
               <h1 id="login-title">Mini CRM</h1>

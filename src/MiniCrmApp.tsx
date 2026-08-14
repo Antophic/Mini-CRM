@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { createClient, createClientNote, deleteClient, patchClient, updateClient } from "./api/clients";
 import { AuthForm } from "./components/AuthForm";
+import { BrandMark } from "./components/BrandMark";
 import { ClientDetails } from "./components/ClientDetails";
 import { ClientForm } from "./components/ClientForm";
 import { ClientList } from "./components/ClientList";
@@ -240,7 +241,7 @@ export function MiniCrmApp() {
   if (auth.authLoading) {
     return (
       <main className="loading-page" aria-live="polite">
-        <span className="brand-mark">M</span>
+        <BrandMark />
         <p>Loading your workspace...</p>
       </main>
     );
@@ -266,7 +267,7 @@ export function MiniCrmApp() {
 
       <header className="topbar">
         <div className="brand-row">
-          <span className="brand-mark">M</span>
+          <BrandMark />
           <div>
             <p className="eyebrow">Sales Workspace</p>
             <h1>Mini CRM</h1>

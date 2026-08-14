@@ -295,15 +295,10 @@ h3 {
 }
 
 .brand-mark {
-  align-items: center;
-  background: var(--navy);
   border-radius: 8px;
-  color: #ffffff;
-  display: inline-flex;
   flex: 0 0 44px;
-  font-weight: 800;
   height: 44px;
-  justify-content: center;
+  object-fit: contain;
   width: 44px;
 }
 
